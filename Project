@@ -9,6 +9,7 @@ val spark = SparkSession.builder()
       .master("local[1]")
       .appName("SparkByExample")
       .getOrCreate();lazy val service: Storage = StorageOptions.getDefaultInstance.getService
+      lazy val service: Storage = StorageOptions.getDefaultInstance.getService
 val fetchFileInfo = service.list("shivaya_nama", Storage.BlobListOption.prefix("PCD")).iterateAll().asScala.toList
   
 val df = fetchFileInfo
@@ -17,8 +18,9 @@ val df = fetchFileInfo
     .toDF("Bucket_Name","File_Name","Date","File_Size","File_Type")
     .select(col("Bucket_Name"),col("File_name"),from_unixtime(substring(col("Date"), 1, 10)).as("Date1"),col("File_Size"),col("File_Type"))
     .filter(col("Date1")===current_date())
+    
  
-k.createOrReplaceTempView("k")
+ df.createOrReplaceTempView("k")
 
-val fileTuples_final = spark.sql("SELECT  k.Bucket_name,substring(k.File_name,5,17),k.File_size,k.File_type,substring(k.date,1,10) as date,substring(k.date,12,10) as UTC_time,substring(from_utc_timestamp(k.date, 'UTC+5:30'),12,10)as IST_Time from k ").toDF()
+val fileTuples_final = spark.sql("SELECT  k.Bucket_name,substring(k.File_name,5,17) as File_Pattern,k.File_size,k.File_type,substring(k.Date1,1,10) as date,substring(k.Date1,12,10) as UTC_time,substring(from_utc_timestamp(k.Date1, 'UTC+5:30'),12,10)as IST_Time from k ").toDF()
 val op=fileTuples_final.coalesce(1).write.mode("append").format("csv").option("header","true").save("gs://shivaya_nama//Final_output")
