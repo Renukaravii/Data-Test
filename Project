@@ -2,16 +2,23 @@ import com.google.cloud.storage.Storage.{BlobListOption, CopyRequest}
 import com.google.cloud.storage._
 import com.google.cloud._
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions
+import org.apache.spark.sql.Column
 import scala.collection.JavaConverters.iterableAsScalaIterableConverter
 val spark = SparkSession.builder()
       .master("local[1]")
       .appName("SparkByExample")
-      .getOrCreate();
-lazy val service: Storage = StorageOptions.getDefaultInstance.getService
-val in = service.list("shivaya_nama", Storage.BlobListOption.prefix("reyan")).iterateAll().asScala.toList
-val j = in.map(x => (x.getBucket , x.getName ,  x.getGeneration , x.getSize , x.getContentType)).collect{case (bucket,name,genertion,size,contenttype) => (bucket,name,genertion,size,contenttype)}.toDF("Bucket_name","File_name","date","File_size","File_type")
-val f = j.select(col("Bucket_name"),col("File_name"),col("date"),substring(col("date"),1,10).as ("UTC_date"),col("File_size"),col("File_type")).createOrReplaceTempView("h")
-val hj = spark.sql("select h.Bucket_name,h.File_name,h.date,h.File_size,h.File_type,from_unixtime(UTC_date)  as `Utc` from h").createOrReplaceTempView("k")
-val b = spark.sql("SELECT  k.Bucket_name,k.File_name,k.date,k.File_size,k.File_type,k.Utc,from_utc_timestamp(k.Utc, 'UTC+5:30') as Ist from k").createOrReplaceTempView("f")
-val out = spark.sql("select f.Bucket_name,f.File_name,f.File_size,f.File_type,substring(f.Ist,1,10) as IST_date,substring(f.Ist,12,10) as IST_time,substring(f.UTC,1,10) as UTC_date,substring(f.UTC,12,10) as UTC_time from f").toDF()
-val op= out.coalesce(1).write.mode("append").format("csv").option("header","true").save("gs://shivaya_nama//op1")
+      .getOrCreate();lazy val service: Storage = StorageOptions.getDefaultInstance.getService
+val fetchFileInfo = service.list("shivaya_nama", Storage.BlobListOption.prefix("PCD")).iterateAll().asScala.toList
+  
+val df = fetchFileInfo
+    .map(x => (x.getBucket , x.getName ,  x.getGeneration , x.getSize , x.getContentType))
+    .collect{case (bucket,name,genertion,size,contenttype) => (bucket,name,genertion,size,contenttype)}
+    .toDF("Bucket_Name","File_Name","Date","File_Size","File_Type")
+    .select(col("Bucket_Name"),col("File_name"),from_unixtime(substring(col("Date"), 1, 10)).as("Date1"),col("File_Size"),col("File_Type"))
+    .filter(col("Date1")===current_date())
+ 
+k.createOrReplaceTempView("k")
+
+val fileTuples_final = spark.sql("SELECT  k.Bucket_name,substring(k.File_name,5,17),k.File_size,k.File_type,substring(k.date,1,10) as date,substring(k.date,12,10) as UTC_time,substring(from_utc_timestamp(k.date, 'UTC+5:30'),12,10)as IST_Time from k ").toDF()
+val op=fileTuples_final.coalesce(1).write.mode("append").format("csv").option("header","true").save("gs://shivaya_nama//Final_output")
